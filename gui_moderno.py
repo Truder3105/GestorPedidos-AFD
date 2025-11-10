@@ -9,20 +9,26 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import uuid
 import os
+import pyperclip
 
 
-# --- Configuración de tema ---
-ctk.set_appearance_mode("dark")  # "light" o "dark"
+# --- Configuración del tema ---
+ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
+# =====================================================================
+# ---------------------- CLASE PRINCIPAL APP --------------------------
+# =====================================================================
 class GestorPedidosApp(ctk.CTk):
-    def __init__(self):
+    def __init__(self, user_role="admin"):
         super().__init__()
 
         self.title("Gestor de Pedidos - AFD Interactivo")
         self.geometry("1100x700")
         self.resizable(False, False)
+
+        self.user_role = user_role
 
         # --- Inicializaciones ---
         self.storage = Storage()
@@ -38,19 +44,22 @@ class GestorPedidosApp(ctk.CTk):
         self.sidebar.grid(row=0, column=0, sticky="nswe")
         self.sidebar.grid_rowconfigure(10, weight=1)
 
-        ctk.CTkLabel(self.sidebar, text="Menú Principal", font=ctk.CTkFont(size=18, weight="bold")).grid(
-            row=0, column=0, pady=(20, 10), padx=10
-        )
+        ctk.CTkLabel(
+            self.sidebar, text=f"Menú ({self.user_role})", font=ctk.CTkFont(size=18, weight="bold")
+        ).grid(row=0, column=0, pady=(20, 10), padx=10)
 
         self._boton(self.sidebar, "🏠 Inicio", self.mostrar_inicio, 1)
         self._boton(self.sidebar, "➕ Nuevo Pedido", self.crear_pedido, 2)
         self._boton(self.sidebar, "📦 Inventario", self.mostrar_inventario, 3)
         self._boton(self.sidebar, "📜 Pedidos", self.mostrar_pedidos, 4)
         self._boton(self.sidebar, "⚙️ Eventos", self.mostrar_eventos, 5)
-        self._boton(self.sidebar, "📊 Estadísticas", self.mostrar_estadisticas, 6)
-        self._boton(self.sidebar, "🧩 Ver AFD", self.mostrar_afd, 7)
 
-        ctk.CTkButton(self.sidebar, text="🚪 Salir", fg_color="red", command=self.destroy).grid(
+        # solo admin ve estadísticas y AFD
+        if self.user_role == "admin":
+            self._boton(self.sidebar, "📊 Estadísticas", self.mostrar_estadisticas, 6)
+            self._boton(self.sidebar, "🧩 Ver AFD", self.mostrar_afd, 7)
+
+        ctk.CTkButton(self.sidebar, text="🚪 Cerrar Sesión", fg_color="red", command=self.cerrar_sesion).grid(
             row=9, column=0, pady=30, padx=20
         )
 
@@ -60,36 +69,33 @@ class GestorPedidosApp(ctk.CTk):
 
         self.mostrar_inicio()
 
+    # ------------------- FUNCIONES BÁSICAS --------------------
     def _boton(self, parent, texto, comando, fila):
-        """Crea un botón lateral estándar"""
         btn = ctk.CTkButton(parent, text=texto, width=180, command=comando)
         btn.grid(row=fila, column=0, pady=10, padx=20)
 
     def limpiar(self):
-        """Limpia el contenido del panel principal"""
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
-    # -------------------------------------------------------------------------
-    # Pantalla de inicio
-    # -------------------------------------------------------------------------
+    def cerrar_sesion(self):
+        self.destroy()
+        LoginWindow()
+
+    # ------------------- INICIO --------------------
     def mostrar_inicio(self):
         self.limpiar()
         ctk.CTkLabel(
             self.main_frame,
-            text="Bienvenido al Gestor de Pedidos\nSistema basado en Autómatas Finitos Deterministas",
+            text="Bienvenido al Gestor de Pedidos\nBasado en Autómatas Finitos Deterministas",
             font=ctk.CTkFont(size=22, weight="bold"),
             justify="center",
         ).pack(expand=True)
 
-    # -------------------------------------------------------------------------
-    # Crear pedido
-    # -------------------------------------------------------------------------
+    # ------------------- NUEVO PEDIDO --------------------
     def crear_pedido(self):
         self.limpiar()
-        ctk.CTkLabel(self.main_frame, text="Registrar nuevo pedido", font=ctk.CTkFont(size=18, weight="bold")).pack(
-            pady=20
-        )
+        ctk.CTkLabel(self.main_frame, text="Registrar nuevo pedido", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=20)
 
         sku_entry = ctk.CTkEntry(self.main_frame, placeholder_text="SKU del producto")
         sku_entry.pack(pady=5)
@@ -107,18 +113,26 @@ class GestorPedidosApp(ctk.CTk):
             self.storage.save_order(order_id, sku, qty, ["crear"], "NUEVO")
             info(f"Pedido creado: {order_id} ({sku}, {qty})")
 
-            messagebox.showinfo("Éxito", f"Pedido {order_id[:8]} creado correctamente.")
-            self.mostrar_pedidos()
+            # Ventana emergente con ID copiable
+            top = ctk.CTkToplevel(self)
+            top.title("Pedido Creado")
+            top.geometry("400x200")
+            ctk.CTkLabel(top, text="Pedido creado correctamente ✅", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=10)
+            ctk.CTkLabel(top, text=f"ID del Pedido:\n{order_id}", wraplength=350).pack(pady=10)
+
+            def copiar():
+                pyperclip.copy(order_id)
+                messagebox.showinfo("Copiado", "El ID del pedido se copió al portapapeles.")
+                top.destroy()
+
+            ctk.CTkButton(top, text="📋 Copiar ID", command=copiar).pack(pady=10)
 
         ctk.CTkButton(self.main_frame, text="Registrar Pedido", command=registrar).pack(pady=10)
 
-    # -------------------------------------------------------------------------
-    # Inventario
-    # -------------------------------------------------------------------------
+    # ------------------- INVENTARIO --------------------
     def mostrar_inventario(self):
         self.limpiar()
         ctk.CTkLabel(self.main_frame, text="Inventario actual", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
-
         data = self.inventory.list_all()
 
         def refrescar():
@@ -133,9 +147,7 @@ class GestorPedidosApp(ctk.CTk):
         for sku, qty in data.items():
             ctk.CTkLabel(self.main_frame, text=f"{sku} — {qty} unidades").pack(anchor="w", padx=30)
 
-    # -------------------------------------------------------------------------
-    # Pedidos
-    # -------------------------------------------------------------------------
+    # ------------------- PEDIDOS --------------------
     def mostrar_pedidos(self):
         self.limpiar()
         ctk.CTkLabel(self.main_frame, text="Pedidos registrados", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
@@ -171,9 +183,7 @@ class GestorPedidosApp(ctk.CTk):
             txt = f"🆔 {ped['id'][:8]} | SKU={ped['sku']} | Cant={ped['qty']} | Estado={ped['state']}"
             ctk.CTkLabel(frame_pedidos, text=txt, anchor="w").pack(pady=3, padx=20, anchor="w")
 
-    # -------------------------------------------------------------------------
-    # Aplicar eventos
-    # -------------------------------------------------------------------------
+    # ------------------- EVENTOS --------------------
     def mostrar_eventos(self):
         self.limpiar()
         ctk.CTkLabel(self.main_frame, text="Aplicar evento a pedido", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
@@ -211,9 +221,7 @@ class GestorPedidosApp(ctk.CTk):
 
         ctk.CTkButton(self.main_frame, text="Aplicar evento", command=aplicar).pack(pady=15)
 
-    # -------------------------------------------------------------------------
-    # Estadísticas con gráficos
-    # -------------------------------------------------------------------------
+    # ------------------- ESTADÍSTICAS --------------------
     def mostrar_estadisticas(self):
         self.limpiar()
         ctk.CTkLabel(self.main_frame, text="📊 Estadísticas de Pedidos", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
@@ -236,18 +244,14 @@ class GestorPedidosApp(ctk.CTk):
         canvas.draw()
         canvas.get_tk_widget().pack(pady=10)
 
-    # -------------------------------------------------------------------------
-    # Mostrar diagrama del AFD
-    # -------------------------------------------------------------------------
+    # ------------------- VER AFD --------------------
     def mostrar_afd(self):
         self.limpiar()
         ctk.CTkLabel(self.main_frame, text="Autómata Finito Determinista", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
-
         afd_path = "afd_pedidos.png"
         if not os.path.exists(afd_path):
             ctk.CTkLabel(self.main_frame, text="⚠️ No se encontró el archivo del AFD.").pack(pady=20)
             return
-
         img = Image.open(afd_path)
         img = img.resize((800, 500))
         photo = ImageTk.PhotoImage(img)
@@ -256,6 +260,42 @@ class GestorPedidosApp(ctk.CTk):
         label_img.pack(pady=10)
 
 
+# =====================================================================
+# ---------------------- CLASE LOGIN WINDOW ---------------------------
+# =====================================================================
+class LoginWindow(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Inicio de Sesión - Gestor AFD")
+        self.geometry("400x300")
+        self.resizable(False, False)
+
+        ctk.CTkLabel(self, text="Gestor de Pedidos (AFD)", font=ctk.CTkFont(size=22, weight="bold")).pack(pady=20)
+
+        self.username = ctk.CTkEntry(self, placeholder_text="Usuario")
+        self.username.pack(pady=10)
+        self.password = ctk.CTkEntry(self, placeholder_text="Contraseña", show="•")
+        self.password.pack(pady=10)
+
+        ctk.CTkButton(self, text="Iniciar Sesión", command=self.verificar_login).pack(pady=15)
+        ctk.CTkLabel(self, text="Usuarios de prueba:\nadmin / 1234\nvendedor / 4321", text_color="gray").pack(pady=5)
+
+    def verificar_login(self):
+        user = self.username.get().strip()
+        pwd = self.password.get().strip()
+
+        usuarios = {"admin": "1234", "vendedor": "4321"}
+        if user in usuarios and usuarios[user] == pwd:
+            messagebox.showinfo("Bienvenido", f"Inicio de sesión correcto ({user}).")
+            self.destroy()
+            app = GestorPedidosApp(user_role=user)
+            app.mainloop()
+        else:
+            messagebox.showerror("Error", "Usuario o contraseña incorrectos.")
+
+
+# =====================================================================
+# ---------------------- EJECUCIÓN PRINCIPAL --------------------------
+# =====================================================================
 if __name__ == "__main__":
-    app = GestorPedidosApp()
-    app.mainloop()
+    LoginWindow().mainloop()
